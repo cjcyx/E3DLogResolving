@@ -12,6 +12,7 @@ using Newtonsoft.Json.Linq;
 using MySql.Data.MySqlClient;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Org.BouncyCastle.Operators;
+using System.Runtime.CompilerServices;
 
 namespace WebApplication2.Controllers
 {
@@ -19,6 +20,50 @@ namespace WebApplication2.Controllers
     [Route("[controller]")]
     public class ReceivedInfosController : ControllerBase
     {
+        [HttpPost("PostData")]
+        public string PostData(JArray con)
+        {
+            var result = InsetDbMaterial(con);
+            return result.ToString();
+        }
+        [HttpPost("GetData")]
+        public string GetData(JObject idNumber)
+        {
+            string data = "";
+            using (MySqlConnection msconnection = GetConnectionMaterial())
+            {
+                msconnection.Open();
+                bool flag = false;
+                var sql = "SELECT * FROM `Materials` WHERE ID="+ (idNumber.ToObject <idNun>()).id + ";";
+                using (MySqlCommand mscommand = new MySqlCommand(sql, msconnection))
+                {
+                    MySqlDataReader reader = mscommand.ExecuteReader();
+                    while (reader.Read())
+                    {
+                        flag = true;
+                        var lengths = reader["subLengths"].ToString().Split('&');
+                        List<double> subLength = new List<double>();
+                        foreach (var item in lengths)
+                        {
+                            if (item != "")
+                            {
+                                subLength.Add(Convert.ToDouble(item));
+                            }
+                        }
+                        BaseMaterialReturn resule = new BaseMaterialReturn() {status= flag, id = (long)reader["ID"], length = (double)reader["Length"], subLengths = subLength, user = reader["UserName"].ToString(), itemCode = reader["itemCode"].ToString(), note = reader["note"].ToString() };
+                        data += JsonConvert.SerializeObject(resule);
+                        break;
+                    }
+                    reader.Close();
+                    if (!flag)
+                    {
+                        data += JsonConvert.SerializeObject(new BaseMaterialReturn() { status=flag });
+                    }
+                }
+                msconnection.Close();
+            }
+            return data;
+        }        
         [HttpPost("POSTLOG")]
         public bool Post(JArray con)
         {
@@ -110,6 +155,84 @@ namespace WebApplication2.Controllers
                 }
             }
             return result;
+        }
+        [HttpPost("GetAllMTONos")]
+        public string GetAllMTONos(JObject con)
+        {
+            List<string> result = new List<string>();
+            using (MySqlConnection msconnection = GetConnectionMaterial())
+            {
+                msconnection.Open();
+                var sql = "SELECT MTONo FROM `TrackNames` WHERE status=false order by id desc;";
+                using (MySqlCommand mscommand = new MySqlCommand(sql, msconnection))
+                {
+                    MySqlDataReader reader = mscommand.ExecuteReader();
+                    while (reader.Read())
+                    {
+                        result.Add (reader["MTONo"].ToString());
+                    }
+                    reader.Close();
+                }
+                msconnection.Close();
+            }
+            return JsonConvert.SerializeObject(result);
+        }
+        [HttpPost("GetItemCode")]
+        public string GetItemCode(JObject con)
+        {
+            StringClass code = con.ToObject<StringClass>();
+            List<TrackingListContain> result = new List<TrackingListContain>();
+            List<string> codes = new List<string>();
+            using (MySqlConnection msconnection = GetConnectionMaterial())
+            {
+                msconnection.Open();
+                var sql = "SELECT DISTINCT IdentCode FROM `TrackingList` WHERE `MTONo.`='" + code.str +"' order by id desc;";
+                using (MySqlCommand mscommand = new MySqlCommand(sql, msconnection))
+                {
+                    MySqlDataReader reader = mscommand.ExecuteReader();
+                    while (reader.Read())
+                    {
+                        codes.Add(reader["IdentCode"].ToString());
+                    }
+                    reader.Close();
+                }
+                foreach(var item in codes)
+                {
+                    string MaterialLongDescription = "";
+                    string PartMainSize = "";
+                    double consumption = 0;
+                    double totalLength = 0;
+                    List<double> FinalLength = new List<double>();
+                    sql = "SELECT consumption.consumption,MaterialLongDescription,PartMainSize from TrackingList INNER JOIN consumption on TrackingList.IdentCode=consumption.IdentCode where `MTONo.`='" + code.str + "' and TrackingList.IdentCode = '" + item + "' limit 1;";
+                    using (MySqlCommand mscommand = new MySqlCommand(sql, msconnection))
+                    {
+                        MySqlDataReader reader = mscommand.ExecuteReader();
+                        while (reader.Read())
+                        {
+                            MaterialLongDescription = reader["MaterialLongDescription"].ToString();
+                            PartMainSize = reader["PartMainSize"].ToString();
+                            consumption = (double)reader["consumption"];
+                            break;
+                        }
+                        reader.Close();
+                    }
+                    sql = "select FinalLength from TrackingList where `MTONo.` = '" + code.str + "' and IdentCode = '" + item  + "';";
+                    using (MySqlCommand mscommand = new MySqlCommand(sql, msconnection))
+                    {
+                        MySqlDataReader reader = mscommand.ExecuteReader();
+                        while (reader.Read())
+                        {
+                            var leng = (double)reader["FinalLength"];
+                            totalLength += leng;
+                            FinalLength.Add(leng);
+                        }
+                        reader.Close();
+                    }
+                    result.Add(new TrackingListContain(item, MaterialLongDescription, PartMainSize, consumption, FinalLength));
+                }
+                msconnection.Close();
+            }
+            return JsonConvert.SerializeObject(result);
         }
         [HttpGet("{server}")]
         public string Get(string server)
@@ -350,11 +473,41 @@ namespace WebApplication2.Controllers
             }
             return result;
         }
+        private bool InsetDbMaterial(JArray con)
+        {
+            var result = true;
+            using (MySqlConnection msconnection = GetConnectionMaterial())
+            {
+                msconnection.Open();
+                List<BaseMaterial> obj2 = con.ToObject<List<BaseMaterial>>();
+                foreach (var item in obj2)
+                {
+                    string subLength = "";
+                    foreach (var item1 in item.subLengths)
+                    {
+                        subLength += item1.ToString() + "&";
+                    }
+                    var sql = "INSERT INTO `Materials` (`ID`, `Length`, `UserName`, `itemCode`, `note`, `subLengths`,`TagNo`) VALUES (" + item.id + ", " + item.length + ", '" + item.user + "', '" + item.itemCode + "', '" + item.note + "', '" + subLength + "','"+item.tagNo +"');";
+                    using (MySqlCommand mscommand = new MySqlCommand(sql, msconnection))
+                    {
+                        if (mscommand.ExecuteNonQuery() == -1)
+                        {
+                            result = false;
+                        }
+                    }
+                }
+                msconnection.Close();
+            }
+            return result;
+        }
         private MySqlConnection GetConnection()
         {
             return new MySqlConnection("server=127.0.0.1;database=E3DLicManagement;user=E3DLic;password=LKdMOThGi39eF4Yo=");
         }
-
+        private MySqlConnection GetConnectionMaterial()
+        {
+            return new MySqlConnection("server=127.0.0.1;database=MaterialDatabase;user=MaterialAdmin;password=fO_bj5G)._nuyeIg");
+        }
     }
     public class SheetItems
     {
