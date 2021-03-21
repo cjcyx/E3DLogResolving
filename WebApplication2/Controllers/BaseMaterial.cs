@@ -1,6 +1,7 @@
 ﻿using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace WebApplication2.Controllers
 {
@@ -53,6 +54,24 @@ namespace WebApplication2.Controllers
             }
         }
     }
+    public class Oddments
+    {
+        public long id { get; set; }
+        public double length { get; set; }
+        public string packageNum { get; set; }
+    }
+    public class LengthReturn
+    {
+        public long ID;
+        public double Length;
+    }
+    public class LengthUpdate
+    {
+        public string IdentCode;
+        public string MtoNO;
+        public double Length;
+        public string user;
+    }
     public class ItemCode
     {
         public string code { get; }
@@ -63,8 +82,36 @@ namespace WebApplication2.Controllers
             this.MtoNo = MtoNo;
         }
     }
+    public class ItemCodeinfos
+    {
+        public string IdentCode;
+        public string materialLongDescription;
+        public string partMainSize;
+        public double finalLength;
+        public ItemCodeinfos(string IdentCode,string materialLongDescription,string partMainSize,double length)
+        {
+            this.IdentCode=IdentCode;
+            this.materialLongDescription = materialLongDescription;
+            this.partMainSize = partMainSize;
+            this.finalLength = length;
+        }
+    }
     public class StringClass
     {
         public string str { get; set; }
+    }
+    class TrackingListItem
+    {
+        public long id;
+        public double length;
+
+    }
+    public class XlsContain
+    {
+        public string IdentCode;
+        public string materialLongDescription;
+        public string partMainSize;
+        public double finalLength;
+        public long baseMetalId;
     }
 }
