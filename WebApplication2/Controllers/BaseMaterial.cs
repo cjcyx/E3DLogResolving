@@ -24,7 +24,12 @@ namespace WebApplication2.Controllers
         public string itemCode { get; set; }
         public string note { get; set; }
         public string tagNo { get; set; }
-        public List<double> subLengths { get; set; }
+        public List<SubLengthMtoNo> subLengths { get; set; }
+    }
+    public class SubLengthMtoNo
+    {
+        public double length;
+        public string mtoNo;
     }
     class idNun
     {
@@ -211,5 +216,12 @@ namespace WebApplication2.Controllers
     {
         public List<TrackingListUpdate> trackingList;
         public TrackingListInfos infos;
+    }
+    public class SubmitInfos
+    {
+        public List<ComBinedInfos> infos;
+        public string picker;
+        public string submitter;
+        public string PickNo;
     }
 }

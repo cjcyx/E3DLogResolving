@@ -68,14 +68,14 @@ namespace WebApplication2.Controllers
                         break;
                     }
                     reader.Close();
-                    sql = "SELECT `TrackingList`.`FinalLength` FROM `TrackingList` WHERE `BaseMetalId` = '" + id + "';";
+                    sql = "SELECT `TrackingList`.`FinalLength`,`TrackingList`.`MTONo.` FROM `TrackingList` WHERE `BaseMetalId` = '" + id + "';";
                     mscommand.CommandText = sql;
-                    List<double> subLengths = new List<double>();
+                    List<SubLengthMtoNo > subLengths = new List<SubLengthMtoNo>();
                     reader = mscommand.ExecuteReader();
                     while (reader.Read())
                     {
                         flag = true;
-                        subLengths.Add((double)reader["FinalLength"]);
+                        subLengths.Add( new SubLengthMtoNo() {length = (double)reader["FinalLength"],mtoNo = reader["MTONo."].ToString() });
                     }
                     returnInfo.subLengths = subLengths;
                     reader.Close();
@@ -265,7 +265,7 @@ namespace WebApplication2.Controllers
             using (MySqlConnection msconnection = GetConnectionMaterial())
             {
                 msconnection.Open();
-                var sql = "SELECT DISTINCT IdentCode FROM `TrackingList` WHERE `MTONo.`='" + code.str +"' order by id desc;";
+                var sql = "SELECT DISTINCT IdentCode FROM `TrackingList` WHERE `PickNo`='" + code.str +"' order by id desc;";
                 using (MySqlCommand mscommand = new MySqlCommand(sql, msconnection))
                 {
                     MySqlDataReader reader = mscommand.ExecuteReader();
@@ -279,7 +279,7 @@ namespace WebApplication2.Controllers
                 {
                     string MaterialLongDescription = "";
                     string PartMainSize = "";
-                    sql = "select MaterialLongDescription,	PartMainSize from TrackingList where `MTONo.` = '" + code.str + "' and IdentCode = '" + item + "';";
+                    sql = "select MaterialLongDescription,	PartMainSize from TrackingList where `PickNo` = '" + code.str + "' and IdentCode = '" + item + "';";
                     using (MySqlCommand mscommand = new MySqlCommand(sql, msconnection))
                     {
                         MySqlDataReader reader = mscommand.ExecuteReader();
@@ -291,7 +291,7 @@ namespace WebApplication2.Controllers
                         }
                         reader.Close();
                     }
-                    sql = "SELECT FinalLength FROM `TrackingList` WHERE `MTONo.`= '" + code.str + "' and `IdentCode`= '" + item  + "' and BaseMetalId = 0;";
+                    sql = "SELECT FinalLength FROM `TrackingList` WHERE `PickNo`= '" + code.str + "' and `IdentCode`= '" + item  + "' and BaseMetalId = 0;";
                     double finalLength = 0;
                     using (MySqlCommand mscommand = new MySqlCommand(sql, msconnection))
                     {
@@ -426,7 +426,7 @@ namespace WebApplication2.Controllers
             using (MySqlConnection msconnection = GetConnectionMaterial())
             {
                 msconnection.Open();
-                var sql = "SELECT ID,FinalLength FROM `TrackingList` WHERE `MTONo.`= '" + code.MtoNO  + "' and `IdentCode`= '" + code.IdentCode + "' and BaseMetalId = 0 order by FinalLength DESC;";
+                var sql = "SELECT ID,FinalLength FROM `TrackingList` WHERE `PickNo`= '" + code.MtoNO  + "' and `IdentCode`= '" + code.IdentCode + "' and BaseMetalId = 0 order by FinalLength DESC;";
                 using (MySqlCommand mscommand = new MySqlCommand(sql, msconnection))
                 {
                     MySqlDataReader reader = mscommand.ExecuteReader();
@@ -525,19 +525,89 @@ namespace WebApplication2.Controllers
             using (MySqlConnection msconnection = GetConnectionMaterial())
             {
                 msconnection.Open();
-                var sql = "SELECT Alies FROM `UserStorage` WHERE `authority` like '%" + code.str + "%';";
+                var sql = "SELECT UserName,Alies FROM `UserStorage` WHERE `authority` like '%" + code.str + "%';";
                 using (MySqlCommand mscommand = new MySqlCommand(sql, msconnection))
                 {
                     MySqlDataReader reader = mscommand.ExecuteReader();
                     while (reader.Read())
                     {
-                        result.Add( reader["Alies"].ToString());
+                        result.Add( reader["Alies"].ToString()+"&" +reader["UserName"].ToString());
                     }
                     reader.Close();
                 }
                 msconnection.Close();
             }
             return JsonConvert.SerializeObject(result);
+        }
+        [HttpPost("PostTrackingList")]
+        public string PostTrackingList(JObject con)
+        {
+            SubmitInfos code = con.ToObject<SubmitInfos>();
+            using (MySqlConnection msconnection = GetConnectionMaterialDesign())
+            {
+                msconnection.Open();
+                var sql = "Select ID From TrackNames where MTONo = '"+ code.PickNo +"';";
+                using (MySqlCommand mscommand = new MySqlCommand(sql, msconnection))
+                {
+                    MySqlDataReader reader = mscommand.ExecuteReader();
+                    if (reader.HasRows)
+                    {
+                        return JsonConvert.SerializeObject(new StringClass() { str = "领取编号重复！" });
+                    }
+                    reader.Close();
+                }
+                List<string> allMtoNos = new List<string>();
+                code.infos.ForEach(item => allMtoNos.Add(item.infos.documentNo));
+                foreach(var MtoNo in allMtoNos)
+                {
+                    sql = "Select ID From TrackInfos where DocumentNo = '" + MtoNo + "';";
+                    using (MySqlCommand mscommand = new MySqlCommand(sql, msconnection))
+                    {
+                        MySqlDataReader reader = mscommand.ExecuteReader();
+                        if (reader.HasRows)
+                        {
+                            return JsonConvert.SerializeObject(new StringClass() { str = "领料单编号重复！" });
+                        }
+                        reader.Close();
+                    }
+                }
+                var trans =  msconnection.BeginTransaction();
+                try
+                {
+                    sql = "INSERT INTO `TrackNames` (`ID`, `MTONo`, `status`, `SubmitDate`, `HandleDate`, `User`, `Updater`) VALUES (NULL, '" + code.PickNo + "', '0', '" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "', '" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "', '" + code.picker + "', '" + code.submitter + "')";
+                    using (MySqlCommand mscommand = new MySqlCommand(sql, msconnection))
+                    {
+                        mscommand.Transaction = trans;
+                        mscommand.ExecuteNonQuery();
+                    }
+                    foreach (var item in code.infos)
+                    {
+                        sql = "INSERT INTO `TrackInfos` (`ID`, `MTONo`, `ProjectName`, `Date`, `JobNo`, `DocumentNo`, `MaterialPurchasedBy`, `Discipline`, `CentralizeWarehouse`, `IssuedToFabricator`, `MaterialDescription`, `IssueFor`, `WorkingPackage`, `MaterialsUsedFor`, `IssuedBy`, `CheckedBy`, `ReviewedBy`, `Storage`) VALUES (NULL, '" + code.PickNo + "', '" + item.infos.projectName + "', '" + item.infos.date + "', '" + item.infos.jobNo + "', '" + item.infos.documentNo + "', '" + item.infos.materialPurchasedBy + "', '" + item.infos.discipline + "', '" + item.infos.centralizeWarehouse + "', '" + item.infos.issuedToFabricator + "', '" + item.infos.materialDescription + "', '" + item.infos.issueFor + "', '" + item.infos.workingPackage + "', '" + item.infos.materialsUsedFor + "', '" + item.infos.issuedBy + "', '" + item.infos.checkedBy + "', '" + item.infos.reviewedBy + "', '')";
+                        using (MySqlCommand mscommand = new MySqlCommand(sql, msconnection))
+                        {
+                            mscommand.Transaction = trans;
+                            mscommand.ExecuteNonQuery();
+                        }
+                        foreach (var itemList in item.trackingList)
+                        {
+                            sql = "INSERT INTO `TrackingList` (`ID`, `IdentCode`, `MaterialLongDescription`, `PartMainSize`, `FinalLength`, `MTONo.`, `BaseMetalId`, `workPackageNo`, `testPackageNo`, `lineNo`, `shopISODrawingNo`, `pageNo`, `totalPage`, `shopISODrawingRev`, `systemCode`, `pipeClass`, `spoolNo`, `categoryType`, `cutPipeNo`, `part2ndSize`, `pressureClass`, `mainThicknessGrade`, `thicknessGrade`, `mainConnectionType`, `connectionType`, `materialGrade`, `qty`, `unit`, `materialRequisitionFormNo`, `itemNo`, `note`,`PickNo`) VALUES (NULL, '" + itemList.identCode + "', '" + itemList.materialLongDescription + "', '" + itemList.partMainSize + "', '" + itemList.finalLength + "', '" + item.infos.documentNo + "', '0', '" + itemList.workPackageNo + "', '" + itemList.testPackageNo + "', '" + itemList.lineNo + "', '" + itemList.shopISODrawingNo + "', '" + itemList.pageNo + "', '" + itemList.totalPage + "', '" + itemList.shopISODrawingRev + "', '" + itemList.systemCode + "', '" + itemList.pipeClass + "', '" + itemList.spoolNo + "', '" + itemList.categoryType + "', '" + itemList.cutPipeNo + "', '" + itemList.part2ndSize + "', '" + itemList.pressureClass + "', '" + itemList.mainThicknessGrade + "', '" + itemList.thicknessGrade + "', '" + itemList.mainConnectionType + "', '" + itemList.connectionType + "', '" + itemList.materialGrade + "', '" + itemList.qty + "', '" + itemList.unit + "', '" + itemList.materialRequisitionFormNo + "', '" + itemList.itemNo + "', '" + itemList.note + "','" + code.PickNo + "');";
+                            using (MySqlCommand mscommand = new MySqlCommand(sql, msconnection))
+                            {
+                                mscommand.Transaction = trans;
+                                mscommand.ExecuteNonQuery();
+                            }
+                        }
+                    }
+                    trans.Commit();
+                }
+                catch
+                {
+                    trans.Rollback();
+                    return JsonConvert.SerializeObject(new StringClass() { str = "提交失败，请重试！" });
+                }           
+                msconnection.Close();
+            }
+            return JsonConvert.SerializeObject(new StringClass() { str = "true"});
         }
         [HttpGet("{server}")]
         public string Get(string server)
@@ -868,7 +938,11 @@ namespace WebApplication2.Controllers
         }
         private MySqlConnection GetConnectionMaterial()
         {
-            return new MySqlConnection("server=127.0.0.1;database=MaterialDatabase;user=MaterialAdmin;password=fO_bj5G)._nuyeIg");
+            return new MySqlConnection("server=localhost;database=MaterialDatabase;user=MaterialAdmin;password=fO_bj5G)._nuyeIg");
+        }
+        private MySqlConnection GetConnectionMaterialDesign()
+        {
+            return new MySqlConnection("server=localhost;database=MaterialDatabase;user=MaterianDesign;password=43g(iT*zu/tfG7(y");
         }
         private List<long> Typesetting(List<TrackingListItem> oriItems, double length, double saraplength, double cutloss, out double remainLength,out double totalLength)//saraplength是废料长度，cutloss是切割损耗    
         {
