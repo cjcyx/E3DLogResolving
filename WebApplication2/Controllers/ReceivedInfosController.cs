@@ -35,11 +35,28 @@ namespace WebApplication2.Controllers
         public string GetData(JObject idNumber)
         {
             BaseMaterialReturn returnInfo = new BaseMaterialReturn();
+            long id = (idNumber.ToObject<idNun>()).id;
             using (MySqlConnection msconnection = GetConnectionMaterial())
             {
                 msconnection.Open();
+                if (id == 0)
+                {
+                    var sql1 = "SELECT ID FROM `Materials` Order BY ID desc limit 1;";
+                    using (MySqlCommand mscommand = new MySqlCommand(sql1, msconnection))
+                    {
+                        MySqlDataReader reader = mscommand.ExecuteReader();
+                        {
+                            while (reader.Read())
+                            {
+                                id = (long)reader["ID"];
+                                break;
+                            }
+                        }
+                        reader.Close();
+                    }
+                }
                 bool flag = false;
-                var sql = "SELECT * FROM `Materials` WHERE ID="+ (idNumber.ToObject <idNun>()).id + ";";
+                var sql = "SELECT * FROM `Materials` WHERE ID="+ id + ";";
                 using (MySqlCommand mscommand = new MySqlCommand(sql, msconnection))
                 {
                     MySqlDataReader reader = mscommand.ExecuteReader();
@@ -51,14 +68,14 @@ namespace WebApplication2.Controllers
                         break;
                     }
                     reader.Close();
-                    sql = "SELECT FinalLength FROM `TrackingList` WHERE BaseMetalId=" + (idNumber.ToObject<idNun>()).id + ";";
+                    sql = "SELECT `TrackingList`.`FinalLength` FROM `TrackingList` WHERE `BaseMetalId` = '" + id + "';";
+                    mscommand.CommandText = sql;
                     List<double> subLengths = new List<double>();
                     reader = mscommand.ExecuteReader();
                     while (reader.Read())
                     {
                         flag = true;
                         subLengths.Add((double)reader["FinalLength"]);
-                        break;
                     }
                     returnInfo.subLengths = subLengths;
                     reader.Close();
@@ -436,7 +453,7 @@ namespace WebApplication2.Controllers
                 { 
                     if (remainLength> saraplength)
                     {
-                        sql = "INSERT INTO `oddments` (`ID`, `IdentCode`, `PackageNum`, `Length`, `BaseMetalId`) VALUES (NULL, '"+code.IdentCode +"', '"+code.MtoNO + "', "+ remainLength + ", "+ lengthReturn .ID+ ");";
+                        sql = "INSERT INTO `oddments` (`ID`, `IdentCode`, `PackageNum`, `Length`, `BaseMetalId`, `Storage`) VALUES (NULL, '" + code.IdentCode +"', '"+code.MtoNO + "', "+ remainLength + ", "+ lengthReturn .ID+ ",'"+code.storage+ "');";
                     }
                     else
                     {
@@ -482,18 +499,42 @@ namespace WebApplication2.Controllers
             using (MySqlConnection msconnection = GetConnectionMaterial())
             {
                 msconnection.Open();
-                var sql = "SELECT Password,authority FROM `UserStorage` WHERE `UserName`='" + code.str + "';";                
+                var sql = "SELECT Password,authority,Alies FROM `UserStorage` WHERE `UserName`='" + code.str + "';";                
                 using (MySqlCommand mscommand = new MySqlCommand(sql, msconnection))
                 {
                     MySqlDataReader reader = mscommand.ExecuteReader();
                     while (reader.Read())
                     {
                         result.str = reader["Password"].ToString()+"&";
-                        result.str += reader["authority"].ToString();
+                        result.str += reader["authority"].ToString() + "&";
+                        result.str += reader["Alies"].ToString();
                         break;
                     }
                     reader.Close();
                 }               
+                msconnection.Close();
+            }
+            return JsonConvert.SerializeObject(result);
+        }
+
+        [HttpPost("GetUsersByAuth")]
+        public string GetUsersByAuth(JObject con)
+        {
+            StringClass code = con.ToObject<StringClass>();
+            List<string> result = new List<string>();
+            using (MySqlConnection msconnection = GetConnectionMaterial())
+            {
+                msconnection.Open();
+                var sql = "SELECT Alies FROM `UserStorage` WHERE `authority` like '%" + code.str + "%';";
+                using (MySqlCommand mscommand = new MySqlCommand(sql, msconnection))
+                {
+                    MySqlDataReader reader = mscommand.ExecuteReader();
+                    while (reader.Read())
+                    {
+                        result.Add( reader["Alies"].ToString());
+                    }
+                    reader.Close();
+                }
                 msconnection.Close();
             }
             return JsonConvert.SerializeObject(result);
@@ -643,7 +684,7 @@ namespace WebApplication2.Controllers
             MailMessage msg = new MailMessage();
             msg.To.Add("chaijingchuan@bomesc.com");
             msg.CC.Add("zhaofugui@bomesc.com");
-            msg.From = new MailAddress("chaijingchuan@bomesc.com", "BOMESC领料工具", System.Text.Encoding.UTF8);
+            msg.From = new MailAddress("mero2piping@bomesc.com", "BOMESC领料工具", System.Text.Encoding.UTF8);
             msg.Subject = MtoNo+"领料结果";
             msg.SubjectEncoding = System.Text.Encoding.UTF8;
             msg.Body = "邮件内容";
@@ -651,8 +692,8 @@ namespace WebApplication2.Controllers
             msg.IsBodyHtml = false;
             msg.Attachments.Add(new Attachment(@"tmp/"+MtoNo+".xls"));
             SmtpClient client = new SmtpClient();
-            client.Credentials = new System.Net.NetworkCredential("chaijingchuan@bomesc.com", "au7xFUH7GtSCZnd");
-            client.Host = "mail.bomesc.com";
+            client.Credentials = new System.Net.NetworkCredential("mero2piping@bomesc.com", "gAP8MrenfgGnF7K");
+            client.Host = "192.168.0.7";
             object userState = msg;
             try
             {
